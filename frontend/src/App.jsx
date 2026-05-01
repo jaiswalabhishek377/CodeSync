@@ -1,8 +1,23 @@
-import React from 'react'
+import {Routes, Route, Navigate} from "react-router-dom"
+import { useContext, } from "react"
+import { Toaster } from "react-hot-toast"
+import { AuthContext } from "./context/storecontext"
+import AuthPage from "./pages/AuthPage"
+import WorkSpace from "./pages/WorkSpace"
 
-function App() {
+const App = () => {
+
+  const {token} = useContext(AuthContext);
+
+
   return (
-    <div>App</div>
+    <div className={`min-h-screen`}>
+      <Toaster position="top-right" />
+      <Routes>
+        <Route path="/" element={!token ? <AuthPage /> : <Navigate to="/workspace"  replace/> } />
+        <Route path="/workspace" element={token ? <WorkSpace/> : <Navigate to="/" replace/> } />
+      </Routes>
+    </div>
   )
 }
 

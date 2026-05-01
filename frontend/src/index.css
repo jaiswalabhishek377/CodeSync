@@ -1,0 +1,8 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&family=Rubik:ital,wght@0,300..900;1,300..900&display=swap');
+@import "tailwindcss";
+@plugin "daisyui/index.js";
+
+*{
+  font-family: "Outfit", -apple-system, Segoe UI, Roboto, sans-serif;
+  scroll-behavior: smooth;
+}
