@@ -4,6 +4,7 @@ import { Toaster } from "react-hot-toast"
 import { AuthContext } from "./context/storecontext"
 import AuthPage from "./pages/AuthPage"
 import WorkSpace from "./pages/WorkSpace"
+import WorkspaceEditor from "./pages/WorkspaceEditor"
 
 const App = () => {
 
@@ -16,6 +17,8 @@ const App = () => {
       <Routes>
         <Route path="/" element={!token ? <AuthPage /> : <Navigate to="/workspace"  replace/> } />
         <Route path="/workspace" element={token ? <WorkSpace/> : <Navigate to="/" replace/> } />
+        {/* Test route to see Monaco editor without auth */}
+        <Route path="/test-editor" element={<WorkspaceEditor />} />
       </Routes>
     </div>
   )

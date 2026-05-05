@@ -1,9 +1,7 @@
-import React from 'react'
+import WorkspaceEditor from './WorkspaceEditor'
 
 function WorkSpace() {
-  return (
-    <div>Welcome to syncspace WorkSpace!</div>
-  )
+  return <WorkspaceEditor />
 }
 
 export default WorkSpace
