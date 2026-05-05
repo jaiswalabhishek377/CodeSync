@@ -22,7 +22,12 @@
     "jsonwebtoken": "^9.0.3",
     "nodemon": "^3.1.14",
     "pg": "^8.20.0",
-    "validator": "^13.15.35"
+    "socket.io": "^4.8.3",
+    "validator": "^13.15.35",
+    "ws": "^8.20.0",
+    "y-protocols": "^1.0.7",
+    "y-websocket": "^1.5.4",
+    "yjs": "^13.6.30"
   },
   "devDependencies": {
     "dotenv": "^17.4.2",

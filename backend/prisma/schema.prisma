@@ -19,4 +19,38 @@ model User{
   profilePic String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  
+  // Relations
+  ownedWorkspaces Workspace[]
+  workspaceUsers WorkspaceUser[]
+}
+
+model Workspace {
+  id String @id @default(uuid())
+  name String
+  description String?
+  code String @default("")
+  language String @default("cpp")
+  roomCode String @unique @default(cuid())
+  ownerId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  users WorkspaceUser[]
+}
+
+model WorkspaceUser {
+  id String @id @default(uuid())
+  userId String
+  workspaceId String
+  role String @default("editor") // "owner", "editor", "viewer"
+  createdAt DateTime @default(now())
+  
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, workspaceId])
 }
