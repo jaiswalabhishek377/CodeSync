@@ -4,8 +4,16 @@ import validator from "validator";
 import prisma from "../config/db.js";
 
 //create token
-const createToken = (id)=>{
-    return jwt.sign({id}, process.env.JWT_SECRET, {expiresIn:"1d"})
+const createToken = (user) => {
+    return jwt.sign(
+        { 
+            id: user.id, 
+            fullName: user.fullName, 
+            email: user.email 
+        }, 
+        process.env.JWT_SECRET, 
+        { expiresIn: "1d" }
+    );
 }
 
 //login user
@@ -22,8 +30,16 @@ const loginUser = async(req,res)=>{
             return res.status(400).json({success:false, message:"Invalid credentials"})
         }
         //generate token
-        const token = createToken(user.id);
-        res.json({success:true,token});
+        const token = createToken(user);
+        res.json({
+            success: true, 
+            token, 
+            user: { 
+                id: user.id, 
+                fullName: user.fullName, 
+                email: user.email 
+            }
+        });
     }
     catch(error){
         console.error("Error in loginUser:", error);
@@ -56,8 +72,16 @@ const registerUser = async(req,res)=>{
         });
         
         //generate token
-        const token = createToken(newUser.id);
-        res.json({success:true,token});
+        const token = createToken(newUser);
+        res.json({
+            success: true, 
+            token, 
+            user: { 
+                id: newUser.id, 
+                fullName: newUser.fullName, 
+                email: newUser.email 
+            }
+        });
     }
     catch(error){
         console.error("Error in registerUser:", error);

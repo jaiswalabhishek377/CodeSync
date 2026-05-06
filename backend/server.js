@@ -8,6 +8,7 @@ import { verifyToken } from './middleware/authMiddleware.js';
 import prisma from './config/db.js';
 import { connectDB } from './config/db.js';
 import yWebsocketUtils from 'y-websocket/bin/utils';
+import axios from 'axios';
 
 //import Routers
 import authRouter from './routes/authRoute.js';

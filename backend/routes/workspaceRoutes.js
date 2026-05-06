@@ -5,6 +5,7 @@ import {
   getWorkspace,
   listWorkspaces,
   updateWorkspaceCode,
+  deleteWorkspace,
 } from "../controllers/workspaceController.js";
 
 const router = express.Router();
@@ -20,5 +21,6 @@ router.post("/join", joinWorkspace);
 router.get("/list", listWorkspaces);
 router.get("/:id", getWorkspace);
 router.put("/:id/code", updateWorkspaceCode);
+router.delete("/:roomCode", deleteWorkspace);
 
 export default router;

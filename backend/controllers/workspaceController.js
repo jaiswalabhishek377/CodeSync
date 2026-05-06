@@ -249,3 +249,41 @@ export const updateWorkspaceCode = async (req, res) => {
     res.status(500).json({ success: false, message: "Error updating workspace" });
   }
 };
+
+// Delete workspace
+export const deleteWorkspace = async (req, res) => {
+  try {
+    const { roomCode } = req.params;
+    const userId = req.userId;
+
+    const workspace = await prisma.workspace.findUnique({
+      where: { roomCode },
+      include: { users: true }
+    });
+
+    if (!workspace) {
+      return res.status(404).json({ success: false, message: "Workspace not found" });
+    }
+
+    // Check if user is the owner
+    const userAccess = workspace.users.find(u => u.userId === userId && u.role === "owner");
+    if (!userAccess) {
+      return res.status(403).json({ success: false, message: "Only owners can delete workspaces" });
+    }
+
+    // Delete workspace (Prisma should handle related records if set to CASCADE)
+    // If not, we manually delete workspace users
+    await prisma.workspaceUser.deleteMany({
+      where: { workspaceId: workspace.id }
+    });
+
+    await prisma.workspace.delete({
+      where: { id: workspace.id }
+    });
+
+    res.json({ success: true, message: "Workspace deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting workspace:", error);
+    res.status(500).json({ success: false, message: "Error deleting workspace" });
+  }
+};
