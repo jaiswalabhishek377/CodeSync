@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useContext } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import axios from 'axios';
 import * as Y from 'yjs';
@@ -13,87 +14,139 @@ import { AuthContext } from "../context/storecontext";
 const starterCode = `#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello, SyncSpace!" << endl;\n    return 0;\n}\n`;
 
 function WorkspaceEditor() {
+  const { roomCode: paramRoomCode } = useParams();
+  const navigate = useNavigate();
   const { socket, connected: socketConnected } = useSocket();
   const { token } = useContext(AuthContext);
-  const [code, setCode] = useState(starterCode);
+  const [userName, setUserName] = useState('Developer');
+  const [code, _setCode] = useState(starterCode);
+  const [showModal, setShowModal] = useState(false);
+  const pendingJoinRef = useRef(null);
   const [language, setLanguage] = useState("cpp");
-  const [roomCode, setRoomCode] = useState(null);
-  const [workspaceId, setWorkspaceId] = useState(null);
-  const [showModal, setShowModal] = useState(true);
+  const [roomCode, setRoomCode] = useState(paramRoomCode || null);
+  const [workspaceId, _setWorkspaceId] = useState(null);
   const [output, setOutput] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [users, setUsers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
+  const [userRole, setUserRole] = useState("editor"); 
   const [editorInstance, setEditorInstance] = useState(null);
   const [isSynced, setIsSynced] = useState(false);
   const [yjsConnected, setYjsConnected] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const pendingJoinRef = useRef(null);
   const bindingRef = useRef(null);
   const yjsSessionRef = useRef(null);
   const editorKey = roomCode || 'no-room';
 
-  // Combined connection status
-  const connected = socketConnected && yjsConnected;
+  // Toggle Chat Visibility
   const [showChat, setShowChat] = useState(true);
 
-  const handleCreateRoom = async (roomData) => {
-    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-    const token = localStorage.getItem('token');
-    const initialCode = starterCode;
-    try {
-      const res = await axios.post(
-        `${API_BASE}/api/workspace/create`,
-        { name: roomData.name, description: '', language: roomData.language, code: initialCode },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const workspace = res.data.workspace;
-      const user = res.data.user;
-      setCurrentUser(user);
-      setWorkspaceId(workspace.id);
-      setLanguage(workspace.language);
-      setCode(initialCode);
-      setRoomCode(workspace.roomCode);
-      setShowModal(false);
-      toast.success(`Room created: ${workspace.roomCode}`);
-      // Initial code is now saved during creation; no need for a secondary PUT.
-      pendingJoinRef.current = workspace.roomCode;
-    } catch (err) {
-      console.error('Create room failed', err);
-      toast.error('Failed to create room');
+  // Try to safely extract identity facts once upon mount or token update
+  const getIdentityName = () => {
+    let decodedName = null;
+    const storedUserStr = localStorage.getItem('user');
+    const storedUser = storedUserStr ? JSON.parse(storedUserStr) : null;
+    
+    if (currentUser?.fullName || currentUser?.name) {
+      decodedName = currentUser.fullName || currentUser.name;
+    } else if (storedUser?.fullName || storedUser?.name) {
+      decodedName = storedUser.fullName || storedUser.name;
     }
+
+    if (!decodedName && token) {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        decodedName = payload.fullName || payload.name;
+      } catch (e) {
+        console.error("Token parse error", e);
+      }
+    }
+    
+    return decodedName || 'Developer';
   };
 
-  const handleJoinRoom = async (roomCodeInput) => {
-    const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
-    const token = localStorage.getItem('token');
-    try {
-      const res = await axios.post(
-        `${API_BASE}/api/workspace/join`,
-        { roomCode: roomCodeInput },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const workspace = res.data.workspace;
-      const user = res.data.user;
-      setCurrentUser(user);
-      setWorkspaceId(workspace.id);
-      setLanguage(workspace.language);
-      if (workspace.code) setCode(workspace.code);
-      else setCode(starterCode);
-      setRoomCode(workspace.roomCode);
-      setShowModal(false);
-      toast.success(`Joined room: ${workspace.roomCode}`);
-      pendingJoinRef.current = workspace.roomCode;
-    } catch (err) {
-      console.error('Join room failed', err);
-      toast.error(err.response?.data?.message || 'Failed to join room');
+  const trueName = getIdentityName();
+  
+  // Keep React state in sync without breaking hooks rules
+  useEffect(() => {
+    if (trueName !== 'Developer' && userName !== trueName) {
+      setUserName(trueName);
     }
-  };
+  }, [trueName, userName]);
+
+  // Fetch workspace details if roomCode is in URL
+  useEffect(() => {
+    const fetchWorkspace = async () => {
+      if (!paramRoomCode || !token) return;
+      
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+      try {
+        const res = await axios.get(`${API_BASE}/api/workspace/list`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        const workspace = res.data.workspaces.find(ws => ws.roomCode === paramRoomCode);
+        if (workspace) {
+          _setWorkspaceId(workspace.id);
+          setLanguage(workspace.language);
+          setUserRole(workspace.role);
+          
+          // Get current user info
+          const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
+          setCurrentUser(storedUser);
+          setRoomCode(paramRoomCode);
+        } else {
+          // Attempt to join if not in list
+          const joinRes = await axios.post(`${API_BASE}/api/workspace/join`, 
+            { roomCode: paramRoomCode },
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (joinRes.data.success) {
+            _setWorkspaceId(joinRes.data.workspace.id);
+            setLanguage(joinRes.data.workspace.language);
+            setCurrentUser(joinRes.data.user);
+            setRoomCode(paramRoomCode);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load workspace:", err);
+        toast.error("Workspace access denied");
+        navigate('/dashboard');
+      }
+    };
+
+    fetchWorkspace();
+  }, [paramRoomCode, token, navigate]);
+
+  // Combined connection status
+  const connected = socketConnected && yjsConnected;
 
   // Yjs backend (server.js `writeState`) handles autosaving cleanly.
   // We no longer need an aggressive client-side REST save loop.
 
   useEffect(() => {
+    if (socket && roomCode && socketConnected) {
+      console.log(`🔌 Socket.io: Joining room ${roomCode}`);
+      socket.emit('join-room', roomCode);
+
+      // Listener cleanup to handle state changes during room transitions
+      socket.removeAllListeners('user-joined');
+      socket.removeAllListeners('user-left');
+
+      socket.on('user-joined', ({ userName: joinedUser }) => {
+        const displayName = joinedUser || 'A developer';
+        toast.success(`${displayName} joined the room`, { icon: '👋' });
+      });
+
+      socket.on('user-left', ({ userName: leftUser }) => {
+        const displayName = leftUser || 'A developer';
+        toast(`${displayName} left the room`, { icon: '🚪' });
+      });
+    }
+  }, [socket, socketConnected, roomCode]);
+
+  useEffect(() => {
+    // Only update Yjs identity after currentUser data has successfully loaded or resolved
     if (!roomCode || !token) {
       return undefined;
     }
@@ -116,17 +169,31 @@ function WorkspaceEditor() {
 
     provider.on('sync', (synced) => {
       if (synced) {
-        console.log(`✅ Yjs synced for room ${roomCode}, Y.Text length: ${ytext.length}`);
+        console.log(`✅ Yjs synced for room ${roomCode}. Current length: ${ytext.length}`);
         
-        // Final fallback: if DB was empty, seed with starterCode
-        if (ytext.length === 0) {
-          ytext.insert(0, starterCode);
-        }
+        // CRITICAL BUG FIX: 
+        // Previously, we were checking ytext.length === 0 right after sync.
+        // However, if the server has code (seeded from DB), the sync event fires
+        // but the content might arrive a millisecond later or be handled by 
+        // y-websocket's internal document merging. 
+        // If we insert starterCode here, it conflicts with the server's seeded code.
+        
+        // We will now only seed if the document is empty after a short delay
+        // to give the server-side bindState time to populate the document.
+        setTimeout(() => {
+          if (ytext.length === 0) {
+            console.log("🌱 Room is genuinely empty. Seeding default starter code.");
+            ytext.insert(0, starterCode);
+          }
+        }, 500);
 
         // Trigger a re-render so our binding can now attach cleanly
         setIsSynced(true);
       }
     });
+
+    // Handle initial seed from API if Yjs didn't sync anything (e.g. first user in session)
+    // We already do this in server.js bindState, but we'll ensure the UI knows.
 
     // Listen to external changes from other clients (update React state only)
     const handleYTextUpdate = () => {
@@ -139,16 +206,56 @@ function WorkspaceEditor() {
     const randomColors = ['#f87171', '#60a5fa', '#34d399', '#fbbf24', '#a78bfa', '#a3e635'];
     const myColor = randomColors[Math.floor(Math.random() * randomColors.length)];
     
+    // Crucial: Set the local state BEFORE the provider handles deeper sync
+    console.log(`👤 Identifying as: ${trueName} (Role: ${userRole})`);
+
     provider.awareness.setLocalStateField('user', {
-      name: currentUser ? currentUser.name : 'Unknown Dev',
+      name: trueName,
       color: myColor,
+      role: userRole
     });
 
     const handleAwarenessChange = () => {
-      const states = Array.from(provider.awareness.getStates().values());
-      const activeUsers = states.map((s) => s.user).filter(Boolean);
-      console.log('👥 Awareness states changed, active users:', activeUsers);
-      setUsers(activeUsers || []);
+      const states = Array.from(provider.awareness.getStates().entries());
+      const activeUsers = states.map(([clientId, s]) => {
+        if (!s.user) return null;
+        return {
+          ...s.user,
+          clientId
+        };
+      }).filter(Boolean);
+      
+      console.log("👥 Active users updated in UI:", activeUsers);
+      setUsers([...activeUsers]);
+
+      // Improved DOM Injection for dynamic colors and names
+      setTimeout(() => {
+        const cursorHeads = document.querySelectorAll('.yRemoteSelectionHead');
+        cursorHeads.forEach((head) => {
+          const parent = head.parentElement;
+          if (parent) {
+            // MonacoBinding sets border-color on the parent .yRemoteSelection
+            const color = parent.style.borderColor || 'orange';
+            head.style.backgroundColor = color;
+            head.style.borderColor = color;
+            
+            // Extract username from awareness states based on CSS classes if needed
+            // But MonacoBinding usually handles the mapping. We just need to ensure the attribute exists.
+            if (!head.getAttribute('data-user-name')) {
+              // Check if we can find the matching user by color
+              // This is a backup if the attribute isn't set by MonacoBinding
+              const userMatch = activeUsers.find(u => u.color === color || head.style.borderLeftColor === u.color);
+              if (userMatch) {
+                head.setAttribute('data-user-name', userMatch.name);
+              } else {
+                // Fallback to the first other user if only 2 people are there
+                const otherUser = activeUsers.find(u => u.name !== trueName);
+                if (otherUser) head.setAttribute('data-user-name', otherUser.name);
+              }
+            }
+          }
+        });
+      }, 0);
     };
     provider.awareness.on('change', handleAwarenessChange);
 
@@ -164,6 +271,17 @@ function WorkspaceEditor() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomCode, token]);
+
+  // Separate effect to update Yjs awareness when role/name changes
+  useEffect(() => {
+    if (yjsSessionRef.current?.provider && trueName) {
+      yjsSessionRef.current.provider.awareness.setLocalStateField('user', {
+        name: trueName,
+        color: '#60a5fa', 
+        role: userRole
+      });
+    }
+  }, [trueName, userRole]);
 
   // Removed legacy 'no-Yjs' Code synchronizer to prevent Monaco tug-of-war
 
@@ -196,34 +314,23 @@ function WorkspaceEditor() {
       session.provider.awareness
     );
 
+    // RBAC: If user is only a 'viewer', set editor to read-only
+    if (userRole === 'viewer') {
+      editor.updateOptions({ readOnly: true });
+      // Clear the selection/cursor if the user is a viewer to avoid confusion
+      editor.setSelection({ startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 });
+      toast('View-only mode: You cannot edit', { icon: '👁️', duration: 4000 });
+    } else {
+      editor.updateOptions({ readOnly: false });
+    }
+
     return () => {
       if (bindingRef.current) {
         bindingRef.current.destroy();
         bindingRef.current = null;
       }
     };
-  }, [roomCode, editorInstance, isSynced]);
-
-  useEffect(() => {
-    if (!socket) return;
-
-    const handleUserJoined = (data) => {
-      toast.success('A user joined the room!');
-      console.log('User joined:', data);
-    };
-
-    const handleUserLeft = (data) => {
-      console.log('User left:', data);
-    };
-
-    socket.on('user-joined', handleUserJoined);
-    socket.on('user-left', handleUserLeft);
-
-    return () => {
-      socket.off('user-joined', handleUserJoined);
-      socket.off('user-left', handleUserLeft);
-    };
-  }, [socket]);
+  }, [roomCode, editorInstance, isSynced, userRole]);
 
   useEffect(() => {
     if (!roomCode || socketConnected) return;
@@ -291,39 +398,72 @@ function WorkspaceEditor() {
     }
   };
 
+  const handleCreateRoom = async ({ name, language }) => {
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const res = await axios.post(`${API_BASE}/api/workspace/create`, 
+        { name, language },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (res.data.success) {
+        setShowModal(false);
+        navigate(`/workspace/${res.data.workspace.roomCode}`);
+      }
+    } catch (err) {
+      toast.error("Failed to create workspace");
+      console.error(err);
+    }
+  };
+
+  const handleJoinRoom = async (code) => {
+    setShowModal(false);
+    navigate(`/workspace/${code}`);
+  };
+
   const copyRoomCode = () => {
     if (roomCode) {
-      navigator.clipboard.writeText(roomCode);
-      toast.success("Room code copied!");
+      const shareUrl = `${window.location.origin}/workspace/${roomCode}`;
+      navigator.clipboard.writeText(shareUrl);
+      toast.success("Shareable room link copied!", { icon: '🔗' });
     }
   };
 
   const leaveRoom = () => {
+    // 1. Destroy Sync Bindings
     if (bindingRef.current) {
       bindingRef.current.destroy();
       bindingRef.current = null;
     }
 
-    // Clear the ghost text and cursors
+    // 2. Clear Local State
+    setUsers([]);
+    setRoomCode(null);
+    _setWorkspaceId(null);
+    setEditorInstance(null);
+    setIsSynced(false);
+    setYjsConnected(false);
+
+    // 3. Clear Monaco Model content to prevent "leakage" into next room
     if (editorInstance && editorInstance.getModel?.()) {
       editorInstance.getModel().setValue(""); 
     }
 
-    if (yjsSessionRef.current) {
-      yjsSessionRef.current.provider.destroy();
-      yjsSessionRef.current.doc.destroy();
-      yjsSessionRef.current = null;
-    }
+    // 4. Notify Server (Socket)
     if (socket && roomCode) {
       socket.emit('leave-room', roomCode);
     }
-    setUsers([]);
-    setRoomCode(null);
-    setWorkspaceId(null);
-    setCode(starterCode);
-    pendingJoinRef.current = null;
-    setEditorInstance(null);
-    setShowModal(true);
+
+    // 5. Cleanup Yjs Provider strictly
+    if (yjsSessionRef.current) {
+      const { provider, doc } = yjsSessionRef.current;
+      provider.disconnect();
+      provider.destroy();
+      doc.destroy();
+      yjsSessionRef.current = null;
+    }
+
+    // 6. Navigate back to Hub
+    navigate('/dashboard');
   };
 
   return (
@@ -339,9 +479,9 @@ function WorkspaceEditor() {
               <button
                 onClick={copyRoomCode}
                 className="ml-2 p-1 hover:bg-gray-600 rounded transition"
-                title="Copy room code"
+                title="Copy share link"
               >
-                📋
+                🔗
               </button>
             </div>
           )}
@@ -355,7 +495,8 @@ function WorkspaceEditor() {
           <select
             value={language}
             onChange={(e) => setLanguage(e.target.value)}
-            className="px-3 py-1 bg-gray-700 border border-gray-600 rounded text-sm focus:outline-none focus:border-blue-500"
+            disabled={userRole === 'viewer'}
+            className="px-3 py-1 bg-gray-700 border border-gray-600 rounded text-sm focus:outline-none focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <option value="cpp">C++</option>
             <option value="python">Python</option>
@@ -365,8 +506,9 @@ function WorkspaceEditor() {
 
           <button
             onClick={handleRunCode}
-            disabled={isRunning}
-            className="px-4 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-semibold transition disabled:opacity-50"
+            disabled={isRunning || userRole === 'viewer'}
+            className="px-4 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed"
+            title={userRole === 'viewer' ? "Viewers cannot execute code" : "Run Code"}
           >
             {isRunning ? "Running..." : "Run Code"}
           </button>
@@ -418,7 +560,11 @@ function WorkspaceEditor() {
                         className="w-2 h-2 rounded-full shadow-[0_0_5px_rgba(0,0,0,0.5)]"
                         style={{ backgroundColor: user.color }}
                       ></div>
-                      <span className="text-gray-200 font-medium truncate">{user.name}</span>
+                      <span className="text-gray-200 font-medium truncate">
+                        {user.name} 
+                        {user.role === 'owner' && <span className="ml-1 text-[8px] text-orange-400 border border-orange-400/30 px-1 rounded-sm">OWNER</span>}
+                        {user.role === 'viewer' && <span className="ml-1 text-[8px] text-gray-500 border border-gray-700 px-1 rounded-sm">VIEW</span>}
+                      </span>
                     </div>
                   ))
                 )}
@@ -427,11 +573,24 @@ function WorkspaceEditor() {
 
             {/* Chat Box Component */}
             <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-              <ChatBox 
-                socket={socket} 
-                roomCode={roomCode} 
-                currentUser={currentUser} 
-              />
+              <div className="flex items-center justify-between px-4 py-2 bg-gray-700/50 border-b border-gray-600">
+                <span className="text-xs font-semibold uppercase text-gray-400">Team Chat</span>
+                <button 
+                  onClick={() => setShowChat(!showChat)}
+                  className="text-xs text-blue-400 hover:text-blue-300"
+                >
+                  {showChat ? "Hide" : "Show"}
+                </button>
+              </div>
+            {showChat && (
+                <div className="flex-1 min-h-0 flex flex-col">
+                  <ChatBox 
+                    socket={socket} 
+                    roomCode={roomCode} 
+                    currentUser={{...currentUser, name: trueName}} 
+                  />
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -445,12 +604,11 @@ function WorkspaceEditor() {
         </div>
       </div>
 
-      {/* Room Modal */}
       {showModal && (
-        <RoomJoinModal
-          onCreateRoom={handleCreateRoom}
-          onJoinRoom={handleJoinRoom}
-          onClose={() => setShowModal(false)}
+        <RoomJoinModal 
+          onCreateRoom={handleCreateRoom} 
+          onJoinRoom={handleJoinRoom} 
+          onClose={() => roomCode ? setShowModal(false) : navigate("/dashboard")} 
         />
       )}
     </div>

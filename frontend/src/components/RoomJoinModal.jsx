@@ -42,8 +42,9 @@ function RoomJoinModal({ onCreateRoom, onJoinRoom, onClose }) {
         <h2 className="text-2xl font-bold text-white mb-6">SyncSpace</h2>
 
         {/* Create Room */}
-        <div className="mb-8">
-          <h3 className="text-lg font-semibold text-white mb-3">
+        <div className="mb-8 p-4 bg-gray-800/50 rounded-xl border border-gray-700">
+          <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+            <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
             Create New Room
           </h3>
           <input
@@ -51,7 +52,7 @@ function RoomJoinModal({ onCreateRoom, onJoinRoom, onClose }) {
             placeholder="Room name (e.g., 'Project X')"
             value={roomName}
             onChange={(e) => setRoomName(e.target.value)}
-            className="w-full px-4 py-2 bg-gray-800 text-white border border-gray-600 rounded-lg mb-3 focus:outline-none focus:border-blue-500"
+            className="w-full px-4 py-2 bg-gray-800 text-white border border-gray-600 rounded-lg mb-3 focus:outline-none focus:border-blue-500 shrink-0"
           />
           <select
             value={language}
@@ -77,21 +78,22 @@ function RoomJoinModal({ onCreateRoom, onJoinRoom, onClose }) {
             <div className="w-full border-t border-gray-600"></div>
           </div>
           <div className="relative flex justify-center text-sm">
-            <span className="px-2 bg-gray-900 text-gray-400">OR</span>
+            <span className="px-2 bg-gray-900 text-gray-400 font-mono">OR</span>
           </div>
         </div>
 
         {/* Join Room */}
-        <div>
-          <h3 className="text-lg font-semibold text-white mb-3">
+        <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700">
+          <h3 className="text-lg font-semibold text-white mb-3 flex items-center gap-2">
+            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
             Join Existing Room
           </h3>
           <input
             type="text"
-            placeholder="Enter room code"
+            placeholder="Room code"
             value={roomCode}
             onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-            className="w-full px-4 py-2 bg-gray-800 text-white border border-gray-600 rounded-lg mb-3 focus:outline-none focus:border-blue-500"
+            className="w-full px-4 py-2 bg-gray-800 text-white border border-gray-600 rounded-lg mb-3 focus:outline-none focus:border-blue-500 font-mono"
           />
           <button
             onClick={handleJoinRoom}
@@ -101,9 +103,9 @@ function RoomJoinModal({ onCreateRoom, onJoinRoom, onClose }) {
           </button>
           <button
             onClick={onClose}
-            className="w-full bg-gray-700 hover:bg-gray-600 text-white font-semibold py-2 rounded-lg transition"
+            className="w-full bg-transparent hover:bg-gray-800 text-gray-400 font-semibold py-2 rounded-lg transition border border-gray-700 mt-2"
           >
-            Cancel
+            ← Back to Dashboard
           </button>
         </div>
       </div>

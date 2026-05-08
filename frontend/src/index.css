@@ -19,3 +19,34 @@
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
   background: #4b5563;
 }
+
+/* Final Cursor Labels Fix */
+/* Monaco Awareness Cursors labels fix */
+.yRemoteSelection {
+    background-color: rgba(250, 225, 0, 0.2) !important;
+}
+.yRemoteSelectionHead {
+    position: absolute !important;
+    border-left: 2px solid orange !important;
+    height: 100% !important;
+    box-sizing: border-box !important;
+    z-index: 100 !important;
+}
+.yRemoteSelectionHead::after {
+    position: absolute !important;
+    content: attr(data-user-name) !important;
+    top: -1.6em !important;
+    left: -2px !important;
+    padding: 2px 8px !important;
+    font-size: 11px !important;
+    color: white !important;
+    background-color: inherit !important; 
+    border-radius: 4px !important;
+    white-space: nowrap !important;
+    z-index: 999 !important;
+    font-weight: bold !important;
+    pointer-events: none !important;
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+}

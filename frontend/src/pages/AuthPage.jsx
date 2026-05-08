@@ -39,7 +39,8 @@ const AuthPage = () => {
       if (response.success) {
         setToken(response.token);
         localStorage.setItem("token", response.token);
-        navigate('/workspace'); 
+        localStorage.setItem("user", JSON.stringify(response.user));
+        navigate('/dashboard'); 
       }
     } catch (error) {
       alert(error.message);
