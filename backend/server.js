@@ -42,14 +42,51 @@ setPersistence({
         where: { roomCode },
         select: { code: true },
       });
+      console.log(`🔍 Checking DB for room ${roomCode}. Code found: ${!!workspace?.code}`);
+
       if (workspace && workspace.code) {
         const ytext = doc.getText('monaco');
-        // Only insert if empty to avoid double-seeding
+        const currentText = ytext.toString();
+        
+        // Define the starter code to check against securely
+        const starterCode = "#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << \"Hello, SyncSpace!\" << endl;\n    return 0;\n}\n";
+
         if (ytext.length === 0) {
           ytext.insert(0, workspace.code);
-          console.log(`🌱 bindState: seeded Y.Doc for ${roomCode} (${workspace.code.length} chars)`);
+          console.log(`🌱 bindState Success: Seeded room ${roomCode} from DB`);
+        } else if (currentText === starterCode) {
+           // If it only has the starter code, overwrite it with the DB version
+           ytext.delete(0, ytext.length);
+           ytext.insert(0, workspace.code);
+           console.log(`🌱 bindState: Overwrote starter code with DB version for ${roomCode}`);
         }
       }
+
+      // Re-attach auto-save listener because writeState only fires on document destruction
+      if (!doc.__autoSaveAttached) {
+        let timeoutId;
+        doc.on('update', () => {
+          clearTimeout(timeoutId);
+          timeoutId = setTimeout(async () => {
+            const content = doc.getText('monaco').toString();
+            try {
+              if (content.length > 0) {
+                await prisma.workspace.updateMany({
+                  where: { roomCode },
+                  data: { code: content, updatedAt: new Date() },
+                });
+                console.log(`💾 Auto-saved room ${roomCode} (${content.length} chars)`);
+              }
+            } catch (err) {
+              console.error(`❌ Background save failed for ${roomCode}`, err);
+            }
+          }, 2000); // Save after 2 seconds of inactivity
+        });
+        doc.__autoSaveAttached = true;
+      }
+
+      // Return the doc to tell y-websocket we've handled it
+      return doc;
     } catch (err) {
       console.error(`❌ bindState failed for ${roomCode}:`, err);
     }
@@ -58,14 +95,17 @@ setPersistence({
     try {
       const content = doc.getText('monaco').toString();
       console.log(`💾 Persisting Yjs doc for room ${roomCode} (${content.length} chars)`);
-      await prisma.workspace.updateMany({
-        where: { roomCode },
-        data: {
-          code: content,
-          updatedAt: new Date(),
-        },
-      });
-      console.log(`✅ Successfully persisted room ${roomCode}`);
+      if (content.length > 0) {
+        await prisma.workspace.updateMany({
+          where: { roomCode },
+          data: {
+            code: content,
+            updatedAt: new Date(),
+          },
+        });
+        console.log(`✅ Successfully persisted room ${roomCode}`);
+      }
+      return true;
     } catch (error) {
       console.error(`❌ Failed to persist Yjs state for room ${roomCode}:`, error);
     }
@@ -157,16 +197,16 @@ io.on('connection', (socket) => {
         }
 
         emitRoomUsers(roomCode);
+        
+        // Notify others in room with the JOINED user's name
+        socket.to(roomCode).emit('user-joined', {
+          userId: user.id,
+          userName: user.fullName
+        });
       }
     } catch (err) {
       console.error('Failed to update room presence:', err);
     }
-    
-    // Notify others in room
-    socket.to(roomCode).emit('user-joined', {
-      userId: socket.userId,
-      message: 'A user joined the room'
-    });
   });
 
   // Leave room
@@ -179,9 +219,15 @@ io.on('connection', (socket) => {
       if (room && socket.userId) {
         const entry = room.get(socket.userId);
         if (entry) {
+          const userName = entry.name;
           entry.sockets.delete(socket.id);
           if (entry.sockets.size === 0) {
             room.delete(socket.userId);
+            // Notify neighbors ONLY when the last socket for this user leaves
+            socket.to(roomCode).emit('user-left', { 
+              userId: socket.userId,
+              userName: userName 
+            });
           }
         }
 
@@ -191,8 +237,6 @@ io.on('connection', (socket) => {
 
         emitRoomUsers(roomCode);
       }
-
-      socket.to(roomCode).emit('user-left', { userId: socket.userId });
     } catch (err) {
       console.error('Error on leave-room:', err);
     }
@@ -249,27 +293,6 @@ yjsWss.on('connection', (ws, request) => {
       
       // Setup the websocket connection
       setupWSConnection(ws, request, { docName: roomCode });
-      
-      const ydoc = getYDoc(roomCode);
-      const ytext = ydoc.getText('monaco');
-
-      // Create a debounced save function specific to this room
-      let timeoutId;
-      ydoc.on('update', () => {
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(async () => {
-          const content = ytext.toString();
-          try {
-            await prisma.workspace.updateMany({
-              where: { roomCode },
-              data: { code: content, updatedAt: new Date() },
-            });
-            console.log(`💾 Auto-saved room ${roomCode} in background`);
-          } catch (err) {
-            console.error(`❌ Background save failed for ${roomCode}`, err);
-          }
-        }, 5000); // Saves 5 seconds after the typing stops
-      });
       
       // When this client closes
       ws.on('close', () => {

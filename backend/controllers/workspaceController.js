@@ -92,11 +92,14 @@ export const joinWorkspace = async (req, res) => {
     });
 
     if (!exists) {
+      // Logic for viewer/editor assignment:
+      // If the URL contains a specific query param or if we want logic here
+      // For now, let's default to 'editor' but check for a 'mode' if needed
       await prisma.workspaceUser.create({
         data: {
           userId,
           workspaceId: workspace.id,
-          role: "editor",
+          role: "editor", // Change to "viewer" if you want public links to be read-only
         },
       });
     }
@@ -258,25 +261,30 @@ export const deleteWorkspace = async (req, res) => {
 
     const workspace = await prisma.workspace.findUnique({
       where: { roomCode },
-      include: { users: true }
+      include: { 
+        users: true,
+        owner: true
+      }
     });
 
     if (!workspace) {
       return res.status(404).json({ success: false, message: "Workspace not found" });
     }
 
-    // Check if user is the owner
-    const userAccess = workspace.users.find(u => u.userId === userId && u.role === "owner");
-    if (!userAccess) {
-      return res.status(403).json({ success: false, message: "Only owners can delete workspaces" });
+    // RBAC: Strict Owner-Only Deletion
+    const userAccess = workspace.users.find(u => u.userId === userId);
+    
+    // Check if user is explicit owner in workspaceUser table OR the creator (ownerId)
+    const isOwner = userAccess?.role === "owner" || workspace.ownerId === userId;
+
+    if (!isOwner) {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Permission Denied: Only the workspace owner can delete this project." 
+      });
     }
 
-    // Delete workspace (Prisma should handle related records if set to CASCADE)
-    // If not, we manually delete workspace users
-    await prisma.workspaceUser.deleteMany({
-      where: { workspaceId: workspace.id }
-    });
-
+    // Delete workspace (Prisma handles CASCADE for Users and Records based on schema)
     await prisma.workspace.delete({
       where: { id: workspace.id }
     });
@@ -284,6 +292,6 @@ export const deleteWorkspace = async (req, res) => {
     res.json({ success: true, message: "Workspace deleted successfully" });
   } catch (error) {
     console.error("Error deleting workspace:", error);
-    res.status(500).json({ success: false, message: "Error deleting workspace" });
+    res.status(500).json({ success: false, message: "Internal server error during deletion" });
   }
 };
