@@ -354,45 +354,26 @@ function WorkspaceEditor() {
     
     try {
       const currentCode = editorInstance.getValue();
+      const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
       
-      // Map language names to Piston API identifiers (v3 compatible)
-      const langMap = {
-        'cpp': { language: 'c++', version: '10.2.0' },
-        'python': { language: 'python', version: '3.10.0' },
-        'javascript': { language: 'javascript', version: '18.15.0' },
-        'java': { language: 'java', version: '15.0.2' }
-      };
+      // Hit your Node.js backend instead of the public internet
+      const response = await axios.post(`${API_BASE}/api/workspace/${workspaceId}/execute`, 
+        { code: currentCode, language },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
-      const selectedConfig = langMap[language] || langMap['cpp'];
-
-      const response = await axios.post('https://emkc.org/api/v2/piston/execute', {
-        language: selectedConfig.language,
-        version: selectedConfig.version,
-        files: [
-          {
-            content: currentCode,
-          },
-        ],
-      });
-
-      const result = response.data.run;
-      
-      if (result.stdout || result.stderr) {
-        setOutput(result.stdout || result.stderr);
-      } else {
-        setOutput("Program executed successfully with no output.");
+      if (response.data.success) {
+        setOutput(response.data.output || "Program executed successfully with no output.");
+        if (response.data.hasErrors) {
+          toast.error("Execution had errors");
+        } else {
+          toast.success("Code executed!");
+        }
       }
-      
-      if (result.stderr) {
-        toast.error("Execution had errors");
-      } else {
-        toast.success("Code executed!");
-      }
-
     } catch (error) {
       console.error("Execution error:", error);
       toast.error("Failed to execute code");
-      setOutput("Error: " + (error.response?.data?.message || error.message));
+      setOutput("Error: Server execution failed.");
     } finally {
       setIsRunning(false);
     }
