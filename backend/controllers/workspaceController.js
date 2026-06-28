@@ -1,4 +1,5 @@
 import prisma from "../config/db.js";
+import axios from "axios";
 
 // Generate unique room code
 const generateRoomCode = () => {
@@ -295,3 +296,38 @@ export const deleteWorkspace = async (req, res) => {
     res.status(500).json({ success: false, message: "Internal server error during deletion" });
   }
 };
+
+// Execute code via local Piston Docker container
+export const executeWorkspaceCode = async (req, res) => {
+  try {
+    const { code, language } = req.body;
+    
+    // Map your frontend language state to Piston's exact expected identifiers
+    const langMap = {
+      'cpp': { language: 'c++', version: '*' },
+      'python': { language: 'python', version: '*' },
+      'javascript': { language: 'node', version: '*' },
+      'java': { language: 'java', version: '*' }
+    };
+
+    const selectedConfig = langMap[language] || langMap['cpp'];
+
+    // Proxy the request to your local Docker container
+    const response = await axios.post('http://localhost:2000/api/v2/execute', {
+      language: selectedConfig.language,
+      version: selectedConfig.version,
+      files: [{ content: code }]
+    });
+
+    res.json({
+      success: true,
+      output: response.data.run.stdout || response.data.run.stderr,
+      hasErrors: !!response.data.run.stderr
+    });
+
+  } catch (error) {
+    console.error("Execution error:", error);
+    res.status(500).json({ success: false, message: "Code execution failed inside sandbox" });
+  }
+};
+
