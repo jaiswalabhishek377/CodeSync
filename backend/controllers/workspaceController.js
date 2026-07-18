@@ -306,7 +306,7 @@ export const executeWorkspaceCode = async (req, res) => {
     const langMap = {
       'cpp': { language: 'c++', version: '*' },
       'python': { language: 'python', version: '*' },
-      'javascript': { language: 'node', version: '*' },
+      'javascript': { language: 'javascript', version: '*' }, // Changed from 'node' to 'javascript'
       'java': { language: 'java', version: '*' }
     };
 
@@ -319,15 +319,22 @@ export const executeWorkspaceCode = async (req, res) => {
       files: [{ content: code }]
     });
 
+    // Piston v2 returns combined output in run.output
+    const run = response.data.run;
+    
     res.json({
       success: true,
-      output: response.data.run.stdout || response.data.run.stderr,
-      hasErrors: !!response.data.run.stderr
+      output: run.output || run.stderr || run.stdout, 
+      hasErrors: run.code !== 0 || !!run.stderr
     });
 
   } catch (error) {
-    console.error("Execution error:", error);
-    res.status(500).json({ success: false, message: "Code execution failed inside sandbox" });
+    // Better error logging to see exactly why Piston rejected it
+    console.error("Execution error:", error.response?.data || error.message);
+    res.status(500).json({ 
+      success: false, 
+      message: error.response?.data?.message || "Code execution failed inside sandbox" 
+    });
   }
 };
 
