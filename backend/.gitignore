@@ -3,5 +3,6 @@ dist
 logs
 *.log
 .env
-
+dev.db
+piston/
 /generated/prisma

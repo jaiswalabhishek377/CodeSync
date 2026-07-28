@@ -332,9 +332,40 @@ yjsHttpServer.listen(YJS_PORT, () => {
 });
 
 //routes
-app.get("/",(req,res)=>{
+app.get("/", (req,res)=>{
     res.send("Hello World!");
-})
+});
+
+// Health check endpoint
+app.get("/api/health", async (req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    const pistonUrl = process.env.PISTON_URL || 'http://localhost:2000';
+    
+    // Quick Piston health check (non-blocking, timeout 2s)
+    let pistonHealth = 'unknown';
+    try {
+      const pistonResponse = await axios.get(`${pistonUrl}/api/v2/languages`, { timeout: 2000 });
+      pistonHealth = pistonResponse.status === 200 ? 'ok' : 'down';
+    } catch (err) {
+      pistonHealth = 'down';
+    }
+
+    res.json({
+      success: true,
+      database: 'ok',
+      piston: pistonHealth,
+      message: `Server healthy. Piston sandbox: ${pistonHealth}`
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      database: 'error',
+      message: "Database connection failed",
+      error: error.message
+    });
+  }
+});
 
 
 

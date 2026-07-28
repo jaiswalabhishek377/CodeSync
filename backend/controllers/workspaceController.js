@@ -298,43 +298,95 @@ export const deleteWorkspace = async (req, res) => {
 };
 
 // Execute code via local Piston Docker container
+// Execute code via local Piston Docker container
 export const executeWorkspaceCode = async (req, res) => {
   try {
     const { code, language } = req.body;
     
-    // Map your frontend language state to Piston's exact expected identifiers
+    if (!code || !language) {
+      return res.status(400).json({ success: false, message: "Code and language required" });
+    }
+    
+    // FIX 1: Map exact identifiers AND add standard file names
     const langMap = {
-      'cpp': { language: 'c++', version: '*' },
-      'python': { language: 'python', version: '*' },
-      'javascript': { language: 'javascript', version: '*' }, // Changed from 'node' to 'javascript'
-      'java': { language: 'java', version: '*' }
+      'cpp': { language: 'c++', version: '*', fileName: 'main.cpp' },
+      'python': { language: 'python', version: '*', fileName: 'main.py' },
+      'javascript': { language: 'javascript', version: '*', fileName: 'main.js' }, // Fix: Changed from 'node' to 'javascript'
+      'java': { language: 'java', version: '*', fileName: 'Main.java' }
     };
 
     const selectedConfig = langMap[language] || langMap['cpp'];
+    const PISTON_URL = process.env.PISTON_URL || 'http://localhost:2000';
+    const EXECUTION_TIMEOUT = 30000; // 30 seconds
 
-    // Proxy the request to your local Docker container
-    const response = await axios.post('http://localhost:2000/api/v2/execute', {
-      language: selectedConfig.language,
-      version: selectedConfig.version,
-      files: [{ content: code }]
-    });
+    try {
+      // Hit Piston sandbox with timeout
+      const response = await axios.post(
+        `${PISTON_URL}/api/v2/execute`,
+        {
+          language: selectedConfig.language,
+          version: selectedConfig.version,
+          files: [{ 
+            name: selectedConfig.fileName, // FIX 2: Explicitly pass the file name to Piston
+            content: code 
+          }]
+        },
+        { timeout: EXECUTION_TIMEOUT }
+      );
+      
+      // ADD THIS LINE TO DEBUG:
+      console.log("🔍 RAW PISTON RESPONSE:", JSON.stringify(response.data, null, 2));
 
-    // Piston v2 returns combined output in run.output
-    const run = response.data.run;
-    
-    res.json({
-      success: true,
-      output: run.output || run.stderr || run.stdout, 
-      hasErrors: run.code !== 0 || !!run.stderr
-    });
+      // Piston v2 separates compilation (for C++/Java) and execution (for Python/JS)
+      const { compile, run } = response.data;
+
+      // Handle compilation errors natively
+      if (compile && compile.code !== 0) {
+        return res.json({
+          success: true,
+          output: compile.output || compile.stderr || "Compilation failed",
+          exitCode: compile.code,
+          hasErrors: true
+        });
+      }
+
+      // Handle successful execution
+      if (run) {
+        const output = run.output || run.stdout || run.stderr || "Program executed successfully (no output).";
+        return res.json({
+          success: true,
+          output: output.trim(),
+          exitCode: run.code || 0,
+          hasErrors: run.code !== 0 || !!run.stderr
+        });
+      }
+
+      res.json({ success: true, output: "Execution completed.", hasErrors: false });
+
+    } catch (pistonError) {
+      if (pistonError.code === 'ECONNREFUSED') {
+        return res.status(503).json({ success: false, message: `❌ Sandbox service unavailable. Is Docker running?` });
+      }
+      if (pistonError.code === 'ETIMEDOUT') {
+        return res.status(504).json({ success: false, message: "⏱️ Code execution timed out." });
+      }
+      
+      if (pistonError.response) {
+        console.error("❌ Piston API Rejected Request:", pistonError.response.data);
+        return res.status(pistonError.response.status).json({
+          success: false,
+          message: pistonError.response.data.message || "Invalid execution payload."
+        });
+      }
+      
+      throw pistonError;
+    }
 
   } catch (error) {
-    // Better error logging to see exactly why Piston rejected it
-    console.error("Execution error:", error.response?.data || error.message);
-    res.status(500).json({ 
-      success: false, 
-      message: error.response?.data?.message || "Code execution failed inside sandbox" 
+    console.error("❌ Execution error:", error.message || error);
+    res.status(500).json({
+      success: false,
+      message: "Code execution failed. Check backend logs."
     });
   }
 };
-

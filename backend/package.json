@@ -5,7 +5,16 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "server": "nodemon server.js"
+    "server": "nodemon server.js",
+    "dev": "nodemon server.js",
+    "start": "node server.js",
+    "piston:up": "docker compose -f piston/docker-compose.yaml up -d && echo \"✅ Piston started on port 2000. Check: curl http://localhost:2000/api/v2/languages\"",
+    "piston:down": "docker compose -f piston/docker-compose.yaml down",
+    "piston:logs": "docker logs piston_api -f",
+    "piston:health": "curl -s http://localhost:2000/api/v2/languages | head -c 100",
+    "health": "curl -s http://localhost:5000/api/health | node -e \"console.log(JSON.stringify(JSON.parse(require('fs').readFileSync(0, 'utf-8')), null, 2))\"",
+    "db:migrate": "prisma migrate dev",
+    "db:push": "prisma db push"
   },
   "keywords": [],
   "author": "",
@@ -18,6 +27,7 @@
     "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "nodemon": "^3.1.14",
@@ -30,7 +40,6 @@
     "yjs": "^13.6.30"
   },
   "devDependencies": {
-    "dotenv": "^17.4.2",
     "prisma": "^7.8.0"
   }
 }
