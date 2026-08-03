@@ -142,6 +142,19 @@ function WorkspaceEditor() {
         const displayName = leftUser || 'A developer';
         toast(`${displayName} left the room`, { icon: '🚪' });
       });
+
+      socket.on('workspace-language-updated', ({ language: nextLanguage }) => {
+        if (nextLanguage) {
+          setLanguage(nextLanguage);
+          toast(`Workspace language changed to ${nextLanguage.toUpperCase()}`);
+        }
+      });
+
+      return () => {
+        socket.off('user-joined');
+        socket.off('user-left');
+        socket.off('workspace-language-updated');
+      };
     }
   }, [socket, socketConnected, roomCode]);
 
@@ -379,6 +392,32 @@ function WorkspaceEditor() {
     }
   };
 
+  const handleLanguageChange = async (nextLanguage) => {
+    setLanguage(nextLanguage);
+
+    if (!workspaceId || !token) {
+      return;
+    }
+
+    try {
+      const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const currentCode = editorInstance?.getValue?.() || code;
+
+      await axios.put(
+        `${API_BASE}/api/workspace/${workspaceId}/code`,
+        { code: currentCode, language: nextLanguage },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (socket && roomCode) {
+        socket.emit('workspace-language-change', { roomCode, language: nextLanguage });
+      }
+    } catch (error) {
+      console.error('Failed to persist workspace language:', error);
+      toast.error('Failed to sync language change');
+    }
+  };
+
   const handleCreateRoom = async ({ name, language }) => {
     try {
       const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000";
@@ -475,7 +514,7 @@ function WorkspaceEditor() {
         <div className="flex items-center gap-3">
           <select
             value={language}
-            onChange={(e) => setLanguage(e.target.value)}
+            onChange={(e) => handleLanguageChange(e.target.value)}
             disabled={userRole === 'viewer'}
             className="px-3 py-1 bg-gray-700 border border-gray-600 rounded text-sm focus:outline-none focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >

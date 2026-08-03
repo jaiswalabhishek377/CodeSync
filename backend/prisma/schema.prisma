@@ -45,7 +45,7 @@ model WorkspaceUser {
   id String @id @default(uuid())
   userId String
   workspaceId String
-  role String @default("editor") // "owner", "editor", "viewer"
+  role WorkspaceRole @default(editor)
   createdAt DateTime @default(now())
   
   // Relations
@@ -53,4 +53,10 @@ model WorkspaceUser {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   
   @@unique([userId, workspaceId])
+}
+
+enum WorkspaceRole {
+  owner
+  editor
+  viewer
 }

@@ -1,6 +1,28 @@
 import prisma from "../config/db.js";
 import axios from "axios";
 
+const WORKSPACE_ROLE = Object.freeze({
+  OWNER: "owner",
+  EDITOR: "editor",
+  VIEWER: "viewer",
+});
+
+const getWorkspaceMembership = (workspace, userId) => {
+  if (!workspace?.users?.length) return null;
+  return workspace.users.find((entry) => entry.userId === userId) || null;
+};
+
+const canEditWorkspace = (membership) => {
+  return Boolean(
+    membership &&
+      [WORKSPACE_ROLE.OWNER, WORKSPACE_ROLE.EDITOR].includes(membership.role)
+  );
+};
+
+const canDeleteWorkspace = (workspace, membership, userId) => {
+  return membership?.role === WORKSPACE_ROLE.OWNER || workspace.ownerId === userId;
+};
+
 // Generate unique room code
 const generateRoomCode = () => {
   return Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -34,7 +56,7 @@ export const createWorkspace = async (req, res) => {
       data: {
         userId,
         workspaceId: workspace.id,
-        role: "owner",
+        role: WORKSPACE_ROLE.OWNER,
       },
     });
 
@@ -100,7 +122,7 @@ export const joinWorkspace = async (req, res) => {
         data: {
           userId,
           workspaceId: workspace.id,
-          role: "editor", // Change to "viewer" if you want public links to be read-only
+          role: WORKSPACE_ROLE.EDITOR,
         },
       });
     }
@@ -150,7 +172,7 @@ export const getWorkspace = async (req, res) => {
     }
 
     // Check if user has access
-    const userWorkspace = workspace.users.find((u) => u.userId === userId);
+    const userWorkspace = getWorkspaceMembership(workspace, userId);
     if (!userWorkspace) {
       return res.status(403).json({ success: false, message: "Unauthorized" });
     }
@@ -226,8 +248,8 @@ export const updateWorkspaceCode = async (req, res) => {
     }
 
     // Check if user has access
-    const userAccess = workspace.users.find((u) => u.userId === userId);
-    if (!userAccess) {
+    const userAccess = getWorkspaceMembership(workspace, userId);
+    if (!canEditWorkspace(userAccess)) {
       return res.status(403).json({ success: false, message: "Unauthorized" });
     }
 
@@ -273,12 +295,9 @@ export const deleteWorkspace = async (req, res) => {
     }
 
     // RBAC: Strict Owner-Only Deletion
-    const userAccess = workspace.users.find(u => u.userId === userId);
-    
-    // Check if user is explicit owner in workspaceUser table OR the creator (ownerId)
-    const isOwner = userAccess?.role === "owner" || workspace.ownerId === userId;
+    const userAccess = getWorkspaceMembership(workspace, userId);
 
-    if (!isOwner) {
+    if (!canDeleteWorkspace(workspace, userAccess, userId)) {
       return res.status(403).json({ 
         success: false, 
         message: "Permission Denied: Only the workspace owner can delete this project." 

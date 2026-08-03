@@ -259,6 +259,16 @@ io.on('connection', (socket) => {
     socket.to(roomCode).emit('receive-chat', { sender, text, timestamp });
   });
 
+  // Keep workspace language in sync across all collaborators.
+  socket.on('workspace-language-change', ({ roomCode, language }) => {
+    if (!roomCode || !language) return;
+
+    socket.to(roomCode).emit('workspace-language-updated', {
+      language,
+      userId: socket.userId,
+    });
+  });
+
   // Disconnect
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${socket.id}`);
